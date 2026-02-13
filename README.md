@@ -6,6 +6,4 @@ pip install ttkbootstrap pypresence pyinstaller
 
 Converted to EXE, python script will be in src
 
-
-
-To get started go to https://discord.com/developers/applications - Click New Application - Give it a name and ✅By clicking Create, you agree to the Discord Developer Terms of Service - Add a icon - Copy Application ID - Run The EXE and Paste the Application ID where it says Client ID - Add your Details and State - Ignore Large and Small Image Text, currently broken! You can add and save as many presets as you want, along with changing the theme!
+To get started go to https://discord.com/developers/applications - Click New Application - Give it a name and ✅By clicking Create, you agree to the Discord Developer Terms of Service - Add a icon - Copy Application ID - Run The EXE and Paste the Application ID where it says Client ID - Add your Details and State - Ignore Large and Small Image Text, currently broken! You can add and save as many presets as you want, along with changing the theme! Any changes made will create a rpc_presets.json. Themes and Presets save for easy access!
