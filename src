@@ -1,1 +1,261 @@
+import time
+import json
+import os
+import logging
+from pypresence import Presence, exceptions
+
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
+from tkinter import messagebox
+
+PRESET_FILE = "rpc_presets.json"
+logging.basicConfig(level=logging.INFO)
+
+THEME_MAP = {
+    "Darkly": "darkly",
+    "Cyborg": "cyborg",
+    "Superhero": "superhero",
+    "Vapor": "vapor",
+    "Morph": "morph",
+    "Litera": "litera",
+    "Cosmo": "cosmo",
+    "Flatly": "flatly",
+    "Journal": "journal",
+    "Solar": "solar"
+}
+
+DISPLAY_THEMES = list(THEME_MAP.keys())
+
+class DiscordRPCApp:
+    def __init__(self, app):
+        self.app = app
+        self.rpc = None
+        self.is_connected = False
+        self.start_time = time.time()
+
+        self.data = self.load_presets()
+        self.presets = self.data.get("presets", {})
+        self.saved_theme = self.data.get("theme", "darkly")
+
+        self.saved_theme_display = self.get_display_theme(self.saved_theme)
+
+        self.client_id = tb.StringVar()
+        self.details = tb.StringVar(value="Building a new GUI...")
+        self.state = tb.StringVar(value="Using Tkinter and PyPresence")
+        self.large_text = tb.StringVar(value="Python GUI")
+        self.small_text = tb.StringVar(value="RPC Control")
+        self.selected_preset = tb.StringVar(value="(Select Preset)")
+        self.new_preset_name = tb.StringVar(value="New Status Name")
+        self.selected_theme = tb.StringVar(value=self.saved_theme_display)
+
+        self.build_ui()
+        self.apply_theme(startup=True)
+
+    def build_ui(self):
+        self.frame = tb.Frame(self.app, padding=15)
+        self.frame.pack(fill=BOTH, expand=True)
+
+        self.frame.columnconfigure(0, weight=0)
+        self.frame.columnconfigure(1, weight=1)
+        self.frame.columnconfigure(2, weight=0)
+
+        tb.Label(self.frame, text="Client ID:").grid(row=0, column=0, sticky=W)
+        tb.Entry(self.frame, textvariable=self.client_id).grid(row=0, column=1, columnspan=2, sticky=EW)
+
+        self.btn_connect = tb.Button(self.frame, text="Connect RPC", command=self.connect_rpc, bootstyle=SUCCESS)
+        self.btn_connect.grid(row=1, column=0, sticky=EW, pady=5)
+
+        self.btn_disconnect = tb.Button(self.frame, text="Disconnect", command=self.disconnect_rpc, bootstyle=DANGER, state=DISABLED)
+        self.btn_disconnect.grid(row=1, column=1, sticky=EW, pady=5)
+
+        self.status = tb.Label(self.frame, text="Status: Disconnected", bootstyle=DANGER)
+        self.status.grid(row=2, column=0, columnspan=3, pady=5)
+
+        fields = [
+            ("Details:", self.details),
+            ("State:", self.state),
+            ("Large Image Text:", self.large_text),
+            ("Small Image Text:", self.small_text),
+        ]
+
+        for i, (label, var) in enumerate(fields):
+            tb.Label(self.frame, text=label).grid(row=i+3, column=0, sticky=W, pady=2)
+            tb.Entry(self.frame, textvariable=var).grid(row=i+3, column=1, columnspan=2, sticky=EW, pady=2)
+
+        self.btn_update = tb.Button(self.frame, text="Update Presence", command=self.update_presence, bootstyle=PRIMARY, state=DISABLED)
+        self.btn_update.grid(row=7, column=0, columnspan=3, sticky=EW, pady=10)
+
+        tb.Separator(self.frame).grid(row=8, column=0, columnspan=3, sticky=EW, pady=10)
+
+        tb.Label(self.frame, text="Load Preset:").grid(row=9, column=0, sticky=W)
+        self.preset_box = tb.Combobox(self.frame, textvariable=self.selected_preset, values=list(self.presets.keys()), state="readonly")
+        self.preset_box.grid(row=9, column=1, columnspan=2, sticky=EW)
+        self.preset_box.bind("<<ComboboxSelected>>", self.apply_preset)
+
+        tb.Label(self.frame, text="Save As:").grid(row=10, column=0, sticky=W)
+        tb.Entry(self.frame, textvariable=self.new_preset_name).grid(row=10, column=1, sticky=EW)
+        tb.Button(self.frame, text="Save Preset", command=self.save_preset, bootstyle=INFO).grid(row=10, column=2, sticky=EW)
+
+        tb.Separator(self.frame).grid(row=11, column=0, columnspan=3, sticky=EW, pady=10)
+
+        tb.Label(self.frame, text="Theme:").grid(row=12, column=0, sticky=W)
+        self.theme_box = tb.Combobox(self.frame, textvariable=self.selected_theme, values=DISPLAY_THEMES, state="readonly")
+        self.theme_box.grid(row=12, column=1, sticky=EW)
+        tb.Button(self.frame, text="Apply Theme", command=self.apply_theme, bootstyle=SECONDARY).grid(row=12, column=2, sticky=EW)
+
+    def get_real_theme(self, display_name):
+        return THEME_MAP.get(display_name, "darkly")
+
+    def get_display_theme(self, real_theme):
+        for k, v in THEME_MAP.items():
+            if v.lower() == real_theme.lower():
+                return k
+        return "Darkly"
+
+    def apply_theme(self, startup=False):
+        display_theme = self.selected_theme.get()
+        theme = self.get_real_theme(display_theme)
+
+        try:
+            self.app.style.theme_use(theme)
+            if not startup:
+                self.save_theme(theme)
+        except Exception as e:
+            messagebox.showerror("Theme Error", str(e))
+
+    def save_theme(self, theme):
+        self.data["theme"] = theme.lower()
+        self.save_presets()
+
+    def load_presets(self):
+        if os.path.exists(PRESET_FILE):
+            try:
+                with open(PRESET_FILE) as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+
+    def save_presets(self):
+        with open(PRESET_FILE, "w") as f:
+            json.dump(self.data, f, indent=4)
+
+    def save_preset(self):
+        name = self.new_preset_name.get().strip()
+        cid = self.client_id.get().strip()
+
+        if not name or not cid.isdigit():
+            messagebox.showerror("Error", "Preset name + valid Client ID required")
+            return
+
+        self.presets[name] = {
+            "client_id": cid,
+            "details": self.details.get(),
+            "state": self.state.get(),
+            "large_text": self.large_text.get(),
+            "small_text": self.small_text.get(),
+        }
+
+        self.data["presets"] = self.presets
+        self.save_presets()
+
+        self.preset_box["values"] = list(self.presets.keys())
+        self.selected_preset.set(name)
+        messagebox.showinfo("Saved", f"Preset '{name}' saved")
+
+    def apply_preset(self, _=None):
+        name = self.selected_preset.get()
+        if name in self.presets:
+            p = self.presets[name]
+            self.client_id.set(p["client_id"])
+            self.details.set(p["details"])
+            self.state.set(p["state"])
+            self.large_text.set(p["large_text"])
+            self.small_text.set(p["small_text"])
+            self.new_preset_name.set(name)
+
+    def connect_rpc(self):
+        cid = self.client_id.get().strip()
+        if not cid.isdigit():
+            messagebox.showerror("Error", "Invalid Client ID")
+            return
+
+        try:
+            self.rpc = Presence(cid)
+            self.rpc.connect()
+            self.start_time = time.time()
+            self.is_connected = True
+
+            self.status.config(text="Status: Connected", bootstyle=SUCCESS)
+            self.btn_connect.config(state=DISABLED)
+            self.btn_disconnect.config(state=NORMAL)
+            self.btn_update.config(state=NORMAL)
+
+        except Exception as e:
+            messagebox.showerror("RPC Error", str(e))
+
+    def HARD_CLEAR(self):
+        if not self.rpc:
+            return
+        try:
+            self.rpc.update(details="", state="")
+            time.sleep(0.1)
+        except:
+            pass
+        try:
+            self.rpc.clear()
+        except:
+            pass
+
+    def disconnect_rpc(self):
+        if not self.rpc:
+            return
+        self.HARD_CLEAR()
+        try:
+            self.rpc.close()
+        except:
+            pass
+
+        self.rpc = None
+        self.is_connected = False
+
+        self.status.config(text="Status: Disconnected", bootstyle=DANGER)
+        self.btn_connect.config(state=NORMAL)
+        self.btn_disconnect.config(state=DISABLED)
+        self.btn_update.config(state=DISABLED)
+
+    def update_presence(self):
+        if not self.rpc:
+            return
+        try:
+            self.rpc.update(
+                details=self.details.get(),
+                state=self.state.get(),
+                start=self.start_time,
+                large_image="python_logo",
+                small_image="presence_icon",
+                large_text=self.large_text.get(),
+                small_text=self.small_text.get()
+            )
+            self.status.config(text="Status: Updated", bootstyle=INFO)
+        except exceptions.PipeClosed:
+            self.disconnect_rpc()
+
+if __name__ == "__main__":
+    saved_theme = "darkly"
+    if os.path.exists(PRESET_FILE):
+        try:
+            with open(PRESET_FILE) as f:
+                saved_theme = json.load(f).get("theme", "darkly").lower()
+        except:
+            pass
+
+    app = tb.Window(
+        title="Discord Rich Presence Controller",
+        themename=saved_theme,
+        resizable=(False, False)
+    )
+
+    DiscordRPCApp(app)
+    app.mainloop()
 
